@@ -16,23 +16,63 @@ jobs:
 
       - name: Extract project
         run: |
+          rm -rf control-project
+          mkdir -p control-project
           unzip -q control-device-app.zip -d control-project
 
-      - name: Find Gradle project
+      - name: Locate Gradle project
+        id: project
+        shell: bash
         run: |
-          find control-project -maxdepth 3 -name gradlew -type f
+          set -e
+
+          GRADLEW="$(find control-project -type f -name gradlew -print -quit)"
+
+          if [ -z "$GRADLEW" ]; then
+            echo "ERROR: gradlew tidak ditemukan."
+            echo
+            echo "Isi ZIP:"
+            find control-project -maxdepth 5 -type f | sort | head -200
+            exit 1
+          fi
+
+          PROJECT_DIR="$(dirname "$GRADLEW")"
+
+          echo "Gradle wrapper: $GRADLEW"
+          echo "Project directory: $PROJECT_DIR"
+
+          echo "gradlew=$GRADLEW" >> "$GITHUB_OUTPUT"
+          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Make Gradle executable
         run: |
-          chmod +x $(find control-project -maxdepth 3 -name gradlew -type f | head -1)
+          chmod +x "${{ steps.project.outputs.gradlew }}"
 
       - name: Build APK
+        working-directory: ${{ steps.project.outputs.project_dir }}
         run: |
-          cd $(dirname $(find control-project -maxdepth 3 -name gradlew -type f | head -1))
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Find APK
+        id: apk
+        shell: bash
+        run: |
+          APK="$(find "${{ steps.project.outputs.project_dir }}" \
+            -type f \
+            -path "*/build/outputs/apk/*.apk" \
+            -print -quit)"
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK tidak ditemukan."
+            exit 1
+          fi
+
+          echo "APK ditemukan: $APK"
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: control-apk
-          path: control-project/**/build/outputs/apk/**/*.apk
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
