@@ -1,0 +1,38 @@
+name: Build Control APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract project
+        run: |
+          unzip -q control-device-app.zip -d control-project
+
+      - name: Find Gradle project
+        run: |
+          find control-project -maxdepth 3 -name gradlew -type f
+
+      - name: Make Gradle executable
+        run: |
+          chmod +x $(find control-project -maxdepth 3 -name gradlew -type f | head -1)
+
+      - name: Build APK
+        run: |
+          cd $(dirname $(find control-project -maxdepth 3 -name gradlew -type f | head -1))
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: control-apk
+          path: control-project/**/build/outputs/apk/**/*.apk
